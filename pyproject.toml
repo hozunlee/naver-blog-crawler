@@ -1,0 +1,23 @@
+[project]
+name = "naver-crawl"
+version = "0.1.0"
+description = "A Python script that scrapes blog posts from Naver Blog and saves them as markdown files, including images."
+authors = [
+    {name = "hozunlee",email = "ho2yahh@gmail.com"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.13,<4.0"  # 여기를 수정했습니다
+dependencies = [
+    "selenium (>=4.33.0,<5.0.0)",
+    "beautifulsoup4 (>=4.13.4,<5.0.0)",
+    "deepl (>=1.22.0,<2.0.0)",
+    "dotenv (>=0.9.9,<0.10.0)",
+    "feedparser (>=6.0.11,<7.0.0)",
+    "supabase (>=2.15.3,<3.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
