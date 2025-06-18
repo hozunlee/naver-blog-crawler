@@ -1,5 +1,4 @@
 import feedparser
-from datetime import datetime
 import json
 import os
 
@@ -22,7 +21,7 @@ def check_new_posts():
     new_posts = []
     
     # 네이버 RSS 피드 파싱
-    feed_url = 'https://rss.blog.naver.com/dev-dev.xml'
+    feed_url = os.getenv('RSS_URL')
     print(f"RSS 피드 확인 중: {feed_url}")
     
     try:
@@ -39,7 +38,9 @@ def check_new_posts():
                         'title': entry.title,
                         'url': post_url,
                         'published': entry.published,
-                        'summary': entry.get('description', '')[:100] + '...'  # 요약만 표시
+                        'summary': entry.get('description', '')[:100] + '...',  # 요약만 표시
+                        'image': entry.get('description', '').split('src="')[-1].split('"')[0],  # 이미지.src
+                        'tags': entry.tag.split(',')
                     }
                     new_posts.append(post_info)
                     print(f"새 포스트 발견: {entry.title}")
@@ -63,12 +64,15 @@ def main():
     new_posts = check_new_posts()
     
     if new_posts:
+        print(new_posts )
         print("\n새로운 포스트 목록:")
         for i, post in enumerate(new_posts, 1):
             print(f"\n{i}. 제목: {post['title']}")
             print(f"   URL: {post['url']}")
             print(f"   발행일: {post['published']}")
             print(f"   요약: {post['summary']}")
+            print(f"   이미지: {post['image']}")
+            print(f"   태그: {post['tags']}")
 
 if __name__ == "__main__":
     main()

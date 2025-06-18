@@ -4,7 +4,6 @@ def extract_store_and_address(paragraphs):
     print('주소 찾기 시작')
     store_name = None
     address = None
-    print(paragraphs)
 
     # 1. store_name: paragraphs에서 # 뒤에 나오는 첫 단어
     for text in paragraphs:
