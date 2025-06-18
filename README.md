@@ -19,54 +19,95 @@
 -   **이미지 통합 관리**: 원본 이미지 다운로드 및 마크다운 내 자동 참조
 -   **번역 통계 대시보드**: 실시간 번역량 추적 및 잔여 할당량 표시
 
-## 🛠 설치 방법
+## 전체 기술 흐름(아키텍처)
 
-1. 의존성 설치:
+```
+[Naver Blog RSS] → [크롤링/파싱] → [DeepL 번역] → [여행코스 추천(LLM 기반)] → [마크다운 저장] → [Supabase 업로드]
+```
 
-    ```bash
-    poetry install
-    ```
+### 1. 새 글 감지
 
-2. 환경 변수 설정 (`.env` 파일 생성):
+-   `naver_rss.py`에서 RSS 피드를 주기적으로 확인, 새로운 포스트 URL 목록을 수집합니다.
+
+### 2. 크롤링/파싱
+
+-   `naver_crawler.py`에서 Selenium과 BeautifulSoup으로 본문, 이미지, 주소, 태그 등 주요 정보를 추출합니다.
+-   주소/매장 정보는 별도 로직(`get_store_and_address.py`)으로 정교하게 추출합니다.
+
+### 3. 번역
+
+-   DeepL API를 활용해 제목, 본문, 요약, 태그를 영어로 번역합니다.
+-   번역량(글자수) 통계를 자동으로 관리합니다.
+
+### 4. 마크다운 파일 저장
+
+-   한글/영문 각각 Markdown 파일로 저장합니다.
+-   파일명은 안전하게 정규화(sanitize) 처리되어 에러 없이 저장됩니다.
+
+### 5. Supabase 업로드
+
+-   영문 포스트 데이터(제목, 본문, 요약, 대표이미지, 태그)를 `supabase.py`를 통해 engPost 테이블에 insert합니다.
+-   업로드 성공/실패는 상세 로그로 확인할 수 있습니다.
+
+### 환경 변수 설정 (`.env` 파일 생성):
 
     ```env
     DEEPL_API_KEY=your_deepl_api_key
-    PPLX_API_KEY=your_perplexity_api_key
+    SUPABASE_URL=your_supabase_url
+    SUPABASE_KEY=your_supabase_key
+    RSS_URL=your_rss_url
     ```
 
 3. ChromeDriver 설치:
     - [ChromeDriver 다운로드](https://chromedriver.chromium.org/downloads)
     - 시스템 PATH에 추가하거나 프로젝트 루트에 배치
 
+## 주요 로직 스택
+
+-   **Selenium/BeautifulSoup**: 동적 웹 크롤링/HTML 파싱
+-   **feedparser**: RSS 피드 파싱
+-   **DeepL API**: 자연어 번역
+-   **supabase-py**: Supabase DB 연동
+-   **python-dotenv**: 환경변수 관리
+-   **pytest**: 테스트 자동화
+
 ## 🚀 사용 방법
 
 ```bash
+poetry install
+
 # 기본 실행
 poetry run python app.py
 
-# 특정 URL 크롤링 (app.py 내 URL 수정)
-url = 'https://blog.naver.com/your-blog-post'
-```
 
 ## 📂 출력 결과
 
 ```
+
 .
-├── [원본_블로그_제목].md          # 한국어 원본
+├── [원본_블로그_제목].md # 한국어 원본
 ├── eng/
-│   └── [영문_제목].md            # 영문 번역본
-└── images/                       # 다운로드된 이미지들
+│ └── [영문_제목].md # 영문 번역본
+└── images/ # 다운로드된 이미지들
+
 ```
 
 ## 📊 번역 통계
 
 ```
+
 === 글자 수 통계 ===
 현재 글의 총 글자 수: 1,258자
 이번 달 누적 번역: 502,258자
 한 달 동안 번역 가능한 예상 글 개수: 약 397개
 남은 글자 수: 497,742자
-```
+
+````
+
+## 이렇게 쓰면 좋아요!
+- 여행/맛집 블로그 자동 영문화 및 글로벌 확산
+- 데이터 분석/추천 서비스의 입력 데이터 자동화
+- 반복적 컨텐츠 변환 및 DB 적재 업무 완전 자동화
 
 ## 🌟 비즈니스 가치
 
@@ -99,7 +140,7 @@ An AI-powered automation tool that crawls Naver Blog travel/food posts and:
 ```bash
 poetry install
 cp .env.example .env  # Add your API keys
-```
+````
 
 ## 🚀 Usage
 
