@@ -78,12 +78,11 @@ poetry install
 
 # 기본 실행
 poetry run python app.py
-
+```
 
 ## 📂 출력 결과
 
 ```
-
 ├── [원본_블로그_제목].md # 한국어 원본
 ├── eng/
 │ └── [영문_제목].md # 영문 번역본
@@ -101,12 +100,13 @@ poetry run python app.py
 한 달 동안 번역 가능한 예상 글 개수: 약 397개
 남은 글자 수: 497,742자
 
-````
+```
 
 ## 이렇게 쓰면 좋아요!
-- 여행/맛집 블로그 자동 영문화 및 글로벌 확산
-- 데이터 분석/추천 서비스의 입력 데이터 자동화
-- 반복적 컨텐츠 변환 및 DB 적재 업무 완전 자동화
+
+-   여행/맛집 블로그 자동 영문화 및 글로벌 확산
+-   데이터 분석/추천 서비스의 입력 데이터 자동화
+-   반복적 컨텐츠 변환 및 DB 적재 업무 완전 자동화
 
 ## 🌟 비즈니스 가치
 
@@ -139,7 +139,7 @@ An AI-powered automation tool that crawls Naver Blog travel/food posts and:
 ```bash
 poetry install
 cp .env.example .env  # Add your API keys
-````
+```
 
 ## 🚀 Usage
 
