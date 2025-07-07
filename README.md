@@ -39,15 +39,48 @@
 -   DeepL API를 활용해 제목, 본문, 요약, 태그를 영어로 번역합니다.
 -   번역량(글자수) 통계를 자동으로 관리합니다.
 
-### 4. 마크다운 파일 저장
+### 4. 마크다운 파일 저장 및 메타정보 분리 저장
 
 -   한글/영문 각각 Markdown 파일로 저장합니다.
 -   파일명은 안전하게 정규화(sanitize) 처리되어 에러 없이 저장됩니다.
+-   영문 마크다운 파일과 동일 이름의 `.meta.json` 파일로 크롤링 메타정보(제목, 주소, 태그 등)가 별도 저장됩니다.
 
-### 5. Supabase 업로드
+### 5. Supabase 업로드 (분리 워크플로우)
 
--   영문 포스트 데이터(제목, 본문, 요약, 대표이미지, 태그)를 `supabase.py`를 통해 engPost 테이블에 insert합니다.
+-   영문 마크다운 파일과 `.meta.json` 파일을 읽어 Supabase의 `eng_posts` 테이블에 업로드합니다.
+-   크롤링/마크다운 저장 단계와 DB 업로드 단계를 완전히 분리하여, 마크다운 파일을 직접 개선/수정 후 업로드할 수 있습니다.
 -   업로드 성공/실패는 상세 로그로 확인할 수 있습니다.
+
+---
+
+## 🆕 분리 워크플로우 사용법 (2025.07 업데이트)
+
+### 1. 크롤링 및 마크다운/메타 저장
+```python
+from app import crawl_and_save_markdown, init_translator
+translator = init_translator('YOUR_DEEPL_API_KEY')
+meta = crawl_and_save_markdown('https://blog.naver.com/xxx', translator)
+# meta['eng_md_path']와 meta['eng_md_path'].replace('.md', '.meta.json') 생성됨
+```
+
+### 2. (필요시 eng md 파일 직접 개선/수정)
+- eng 마크다운 파일을 직접 열어 원하는 대로 편집/개선
+
+### 3. Supabase 업로드
+```python
+from app import upload_markdown_to_supabase
+upload_markdown_to_supabase(meta['eng_md_path'], meta['eng_md_path'].replace('.md', '.meta.json'))
+```
+
+### 4. CLI/배치 예시
+- 여러 개 URL을 순회하며 1단계만 실행 후, 원하는 시점에 3단계 일괄 업로드 가능
+
+---
+
+## ⚠️ 주요 변경점 및 마이그레이션 안내
+- 기존: 크롤링~DB 업로드까지 한 번에 처리 → **이제는 크롤링/저장과 업로드가 완전히 분리**
+- eng 마크다운 파일을 직접 개선/수정 후 업로드 가능
+- 업로드 시 반드시 `.meta.json` 파일이 필요 (자동 생성됨)
 
 ### 환경 변수 설정 (`.env` 파일 생성):
 

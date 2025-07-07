@@ -1,6 +1,7 @@
 import feedparser
 import json
 import os
+from bs4 import BeautifulSoup
 
 def load_processed_posts():
     """처리된 포스트 목록 불러오기"""
@@ -14,7 +15,21 @@ def save_processed_posts(posts):
     with open('processed_posts.json', 'w', encoding='utf-8') as f:
         json.dump(list(posts), f, ensure_ascii=False, indent=2)
 
-def check_new_posts():
+def extract_image_from_description(description: str) -> str:
+    """Extract the first image URL from HTML description using BeautifulSoup"""
+    if not description:
+        return None
+    
+    try:
+        soup = BeautifulSoup(description, 'html.parser')
+        img_tag = soup.find('img')
+        if img_tag and 'src' in img_tag.attrs:
+            return img_tag['src']
+    except Exception as e:
+        print(f"이미지 추출 중 오류 발생: {e}")
+    return None
+
+def check_new_posts(category):
     """새로운 포스트 확인"""
     # 기존에 처리한 포스트 불러오기
     processed_posts = load_processed_posts()
@@ -29,18 +44,21 @@ def check_new_posts():
         print(f"총 {len(feed.entries)}개의 포스트를 찾았습니다.")
         
         for entry in feed.entries:
-            # '맛집일기_얌얌' 카테고리인지 확인
-            if any('맛집일기_얌얌' in tag.term for tag in entry.get('tags', [])):
+            # 원하는 카테고리인지 확인
+            if any(category in tag.term for tag in entry.get('tags', [])):
                 post_url = entry.link
                 
                 if post_url not in processed_posts:
+                    # Extract image URL using BeautifulSoup
+                    image_url = extract_image_from_description(entry.get('description', ''))
+                    
                     post_info = {
                         'title': entry.title,
                         'url': post_url,
                         'published': entry.published,
                         'summary': entry.get('description', '')[:100] + '...',  # 요약만 표시
-                        'image': entry.get('description', '').split('src="')[-1].split('"')[0],  # 이미지.src
-                        'tags': entry.tag.split(',')
+                        'image_url': image_url,  # Extract first image URL from description
+                        'tags': entry.get('tags', [{'term': ''}])[0].term.split(',')
                     }
                     new_posts.append(post_info)
                     print(f"새 포스트 발견: {entry.title}")

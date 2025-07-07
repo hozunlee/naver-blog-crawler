@@ -1,5 +1,6 @@
 import os
 import re
+import json
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 
@@ -85,66 +86,110 @@ def make_supabase_data(result, eng_md_path, translator):
     tags += re.findall(r'\[([^\]]+)\]', result['title'])
     tags = list(set(tags))
 
+    # 한글/영문 주소 추가
+    kor_url = result.get('url')
+
     data = {
         'title': result['eng_title'],
         'content': content,
         'desc': desc,
         'image': image,
-        'tags': tags
+        'tags': tags,
+        'kor_url': kor_url,
+        'address': result.get('store_and_address', None)
     }
     return data
 
-from components.supabase import insert_eng_post
+# from components.uploader import upload_markdown_to_supabase
 
-def process_blog_post(url: str, translator) -> bool:
+def crawl_and_save_markdown(url: str, translator, rss_data: dict = None) -> dict:
     """
-    단일 네이버 블로그 포스트를 크롤링, 번역, 마크다운 저장, Supabase insert까지 처리합니다.
-    성공 시 True, 실패 시 False 반환.
+    크롤링, 번역, 마크다운 저장 및 메타정보(json) 저장만 수행
+    성공 시 meta 딕셔너리를 반환, 실패 시 None 반환
+    
+    Args:
+        url: 크롤링할 블로그 URL
+        translator: 번역기 객체
+        rss_data: RSS에서 추출한 추가 데이터 (선택사항)
     """
     try:
-        # 1. 네이버 블로그 크롤링 및 번역 결과 dict 획득
         result = crawl_naver_blog(url, translator)
-
-        # 2. 마크다운 파일 저장 (한글/영문)
         file_paths = save_markdown_files(
             result['content_parts'],
             result['content_parts_en'],
             result['safe_title'],
             result['eng_title']
         )
-
-        # 3. Supabase insert용 데이터 생성
-        supabase_data = make_supabase_data(result, file_paths['eng_path'], translator)
-        print("\n[SupaBase Insert Data]")
-        # print(supabase_data)
-
-        # 4. Supabase engPost 테이블에 데이터 저장
-        try:
-            insert_result = insert_eng_post(supabase_data)
-            print("[Supabase Insert 결과]", insert_result)
-        except Exception as supa_err:
-            print(f"[Supabase Insert 에러] {supa_err}")
-
-        # 5. 통계 및 파일 경로 출력
-        print(f"\n마크다운 파일 생성 완료")
-        print(f"제목: {result['title']}")
-        print(f"원본 파일: {os.path.abspath(file_paths['kor_path'])}")
-        print(f"번역 파일: {os.path.abspath(file_paths['eng_path'])}")
-        print(f"총 {result['image_count']-1}개의 이미지가 처리되었습니다.")
-        print_statistics(result['content_parts'], result['image_count'])
-        return True
-
+        
+        # 메타정보를 별도 json으로 저장
+        meta = {
+            'title': result['eng_title'],
+            'kor_title': result['title'],
+            'safe_title': result['safe_title'],
+            'eng_title': result['eng_title'],
+            'address': result.get('store_and_address'),
+            'tags': list(set(re.findall(r'#([\w가-힣]+)', ''.join(result['content_parts'])))),
+            'kor_url': result.get('url'),
+            'image_count': result.get('image_count'),
+            'eng_md_path': file_paths['eng_path'],
+            'kor_md_path': file_paths['kor_path']
+        }
+        
+        # RSS에서 추출한 이미지 URL이 있으면 메타정보에 추가
+        if rss_data and 'image_url' in rss_data and rss_data['image_url']:
+            meta['image_url'] = rss_data['image_url']
+            print(f"RSS에서 이미지 URL 추출됨: {rss_data['image_url']}")
+        else:
+            # 마크다운에서 이미지 URL 추출 시도
+            markdown_content = ''.join(result['content_parts_en'])
+            # 고정: 정규식 패턴 수정 (작은따옴표 제거)
+            image_urls = re.findall(r'!\[.*?\]\((https?://[^\s)]+)\)', markdown_content)
+            if image_urls:
+                meta['image_url'] = image_urls[0]
+                print(f"마크다운에서 이미지 URL 추출됨: {image_urls[0]}")
+        
+        meta_path = file_paths['eng_path'].replace('.md', '.meta.json')
+        with open(meta_path, 'w', encoding='utf-8') as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
+        print(f"[Crawling/Markdown 완료] {file_paths['eng_path']} / {meta_path}")
+        return meta # 성공 시 meta 딕셔너리 반환
     except Exception as e:
-        print(f"에러 발생 (URL: {url}): {str(e)}")
-        return False
+        print(f"[크롤링/마크다운 저장 에러] {url}: {e}")
+        return None # 실패 시 None 반환
 
 def main():
     # DeepL 번역기 초기화
     translator = init_translator(os.getenv('DEEPL_API_KEY'))
     
+    # processed_posts.json 로드 (URL 목록만 저장)
+    processed_posts_path = 'processed_posts.json'
+    processed_urls = set()
+    if os.path.exists(processed_posts_path):
+        try:
+            with open(processed_posts_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # 이전 버전과 호환성을 위해 리스트인지 확인
+                if isinstance(data, list):
+                    # 각 항목이 문자열(URL)인지 딕셔너리(이전 버전 메타)인지 확인
+                    for item in data:
+                        if isinstance(item, str):
+                            processed_urls.add(item)
+                        elif isinstance(item, dict) and 'kor_url' in item:
+                            processed_urls.add(item['kor_url'])
+        except json.JSONDecodeError:
+            print(f"Warning: {processed_posts_path} is empty or malformed. Starting with an empty list.")
+        except Exception as e:
+            print(f"Error loading {processed_posts_path}: {e}")
+    
+    # 기존 처리된 URL 로그 출력
+    print(f"이미 처리된 URL 개수: {len(processed_urls)}")
+    if processed_urls:
+        print("처음 5개 URL 예시:", list(processed_urls)[:5])
+
     # 새 포스트 확인
     print("새로운 포스트 확인 중...")
-    new_posts = check_new_posts()
+    category = "맛집일기_얌얌"
+    new_posts = check_new_posts(category)
     
     if not new_posts:
         print("처리할 새 포스트가 없습니다.")
@@ -154,19 +199,49 @@ def main():
     
     # 각 포스트 처리
     success_count = 0
+    new_processed_urls = set(processed_urls)  # 기존 URL 세트 복사
+    
     for post in new_posts:
+        post_url = post.get('url')
+        if not post_url:
+            print(f"Skipping post with no URL: {post.get('title', 'Unknown Title')}")
+            continue
+            
+        # 이미 처리된 URL인지 확인
+        if post_url in new_processed_urls:
+            print(f"[건너뜀] 이미 처리된 포스트: {post['title']}")
+            continue
+            
         print(f"\n[처리 중] {post['title']}")
-        if process_blog_post(post['url'], translator):
+        print(f"URL: {post_url}")
+        
+        # RSS에서 추출한 데이터를 포함하여 crawl_and_save_markdown 호출
+        meta_data = crawl_and_save_markdown(post_url, translator, rss_data=post)
+
+        if meta_data:  # 성공적으로 처리된 경우
             success_count += 1
+            new_processed_urls.add(post_url)  # 처리된 URL만 추가
+            print(f"[처리 완료] {post['title']}")
+        else:
+            print(f"[처리 실패] {post['title']}")
             
-            
-    
-    
     # 처리 결과 요약
     print(f"\n=== 처리 완료 ===")
     print(f"총 {len(new_posts)}개 중 {success_count}개 처리 성공")
     if success_count < len(new_posts):
         print(f"실패: {len(new_posts) - success_count}개")
+
+    # 업데이트된 processed_posts.json 저장 (URL 목록만 저장)
+    with open(processed_posts_path, 'w', encoding='utf-8') as f:
+        # URL만 리스트로 변환하여 저장
+        json.dump(sorted(list(new_processed_urls)), f, ensure_ascii=False, indent=2)
+    print(f"\nprocessed_posts.json이 업데이트되었습니다. 총 {len(new_processed_urls)}개의 URL이 저장되었습니다.")
+    
+    # 처리 요약
+    new_urls_count = len(new_processed_urls - processed_urls)
+    print(f"\n=== 처리 요약 ===")
+    print(f"새로 처리된 URL: {new_urls_count}")
+    print(f"총 처리된 URL: {len(new_processed_urls)}")
 
 if __name__ == "__main__":
     main()

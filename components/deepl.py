@@ -1,8 +1,5 @@
 import deepl
 
-
-
-
 def init_translator(API_KEY):
     return deepl.Translator(API_KEY)
 

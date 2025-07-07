@@ -181,3 +181,6 @@ processed_posts.json
 translation_counter.txt
 eng/
 kor/
+upload/
+upload_done/
+eng_done/

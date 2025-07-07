@@ -37,12 +37,52 @@ def get_chrome_driver() -> webdriver.Chrome:
 
 
 def extract_blog_title(driver: webdriver.Chrome) -> Tuple[str, str]:
-    """블로그 제목 추출 및 영문 번역"""
-    title = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.CLASS_NAME, "se-title-text"))
-    ).text.strip()
-    safe_title = re.sub(r'[\\/*?:"<>|]', '', title)
-    return title, safe_title
+    """
+    블로그 제목 추출 및 안전한 파일명으로 변환
+    다양한 네이버 블로그 레이아웃에 대응하기 위해 여러 선택자로 시도합니다.
+    """
+    try:
+        # 여러 선택자로 시도
+        selectors = [
+            (By.CLASS_NAME, "se-title-text"),  # 일반적인 선택자
+            (By.CLASS_NAME, "se_editArea"),    # 대체 선택지 1
+            (By.CLASS_NAME, "se_editable"),    # 대체 선택지 2
+            (By.CLASS_NAME, "pcol1"),          # 대체 선택지 3
+            (By.TAG_NAME, "h1"),               # h1 태그로 대체
+            (By.TAG_NAME, "h2"),               # h2 태그로 대체
+            (By.TAG_NAME, "h3"),               # h3 태그로 대체
+            (By.CSS_SELECTOR, "div[role='heading']")  # ARIA role 사용
+        ]
+        
+        title = None
+        for by, selector in selectors:
+            try:
+                element = WebDriverWait(driver, 3).until(
+                    EC.presence_of_element_located((by, selector))
+                )
+                title = element.text.strip()
+                if title:  # 제목을 찾았으면 종료
+                    break
+            except Exception as e:
+                continue
+        
+        # 그래도 제목을 찾지 못한 경우
+        if not title:
+            title = driver.title.split(" : ")[0]  # 블로그 이름 제거
+            
+        # 그래도 없으면 기본값 사용
+        if not title:
+            title = "제목 없음"
+            
+        # 안전한 파일명 생성 (파일 시스템에서 허용되지 않는 문자 제거)
+        safe_title = re.sub(r'[\\/*?:"<>|]', '', title)[:100]  # 파일명 길이 제한
+        
+        return title, safe_title
+        
+    except Exception as e:
+        print(f"[경고] 제목 추출 중 오류가 발생했습니다: {e}")
+        # 기본값 반환
+        return "제목 없음", "untitled_blog_post"
 
 
 def extract_main_content(driver: webdriver.Chrome) -> BeautifulSoup:
@@ -55,12 +95,17 @@ def extract_main_content(driver: webdriver.Chrome) -> BeautifulSoup:
 
 
 def extract_text_and_images(soup: BeautifulSoup, translator: Any) -> Tuple[List[str], List[str], int]:
-    """본문 텍스트/이미지 추출 및 번역, 마크다운 리스트 반환"""
+    """본문 텍스트/이미지 추출 및 번역, 마크다운 리스트 반환
+    - postfiles.pstatic.net 이미지만 허용
+    - 이미지 그룹(div.se-section-imageGroup 등) 내부의 모든 img 처리
+    """
     content_parts = []
     content_parts_en = []
     image_count = 1
+    # 1. 일반 텍스트 및 단일 이미지
     for component in soup.find_all('div', class_='se-component'):
-        if 'se-text' in component.get('class', []):
+        classes = component.get('class', [])
+        if 'se-text' in classes:
             paragraphs = component.find_all('p', class_='se-text-paragraph')
             for p in paragraphs:
                 text = p.get_text().strip()
@@ -68,11 +113,23 @@ def extract_text_and_images(soup: BeautifulSoup, translator: Any) -> Tuple[List[
                     content_parts.append(text + '\n\n')
                     translated = translate_text(text, translator)
                     content_parts_en.append(translated + '\n\n')
-        elif 'se-image' in component.get('class', []):
+        # 단일 이미지(기존)
+        elif 'se-image' in classes:
             img = component.find('img', class_='se-image-resource')
             if img:
                 img_src = img.get('data-lazy-src') or img.get('src', '')
-                if img_src:
+                if img_src and 'postfiles.pstatic.net' in img_src:
+                    img_markdown = f'\n![pic{image_count}]({img_src})\n\n'
+                    content_parts.append(img_markdown)
+                    content_parts_en.append(img_markdown)
+                    image_count += 1
+        # 이미지 그룹 처리
+        elif ('se-section-imageGroup' in classes) or ('se-l-collage' in classes) or ('__se-component' in classes):
+            # 그룹 내 모든 img 태그 순회
+            imgs = component.find_all('img')
+            for img in imgs:
+                img_src = img.get('data-lazy-src') or img.get('src', '')
+                if img_src and 'postfiles.pstatic.net' in img_src:
                     img_markdown = f'\n![pic{image_count}]({img_src})\n\n'
                     content_parts.append(img_markdown)
                     content_parts_en.append(img_markdown)
